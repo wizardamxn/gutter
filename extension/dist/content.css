@@ -1,0 +1,48 @@
+#gutter-root {
+  position: fixed;
+  z-index: 2147483647;
+  display: none;
+}
+#gutter-root.visible {
+  display: block;
+}
+#gutter-root .gutter-ask-btn {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 13px 6px 10px;
+  border: 2px solid #1f1b16;
+  border-radius: 999px;
+  background: #ffd23f;
+  color: #1f1b16;
+  font: 700 13px/1.2 ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif;
+  box-shadow: 3px 3px 0 #1f1b16;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.08s, box-shadow 0.08s;
+}
+/* Two little eyes. */
+#gutter-root .gutter-ask-btn::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #1f1b16;
+  box-shadow: 9px 0 0 #1f1b16;
+  margin-right: 9px;
+}
+#gutter-root .gutter-ask-btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 #1f1b16;
+}
+#gutter-root .gutter-ask-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 #1f1b16;
+}
+.gutter-flash {
+  outline: 3px solid #ffd23f !important;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
