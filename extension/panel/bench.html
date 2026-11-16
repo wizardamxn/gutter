@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gutter bench</title>
+    <style>
+      :root { color-scheme: light dark; --bg: #fff; --fg: #1b1b1f; --line: #d8d8de; --muted: #6b6b75; }
+      @media (prefers-color-scheme: dark) { :root { --bg: #161618; --fg: #ececf0; --line: #333338; --muted: #9a9aa5; } }
+      body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, sans-serif; }
+      h1 { font-size: 18px; margin: 0 0 4px; }
+      p { color: var(--muted); margin: 0 0 12px; max-width: 70ch; }
+      .bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
+      button { font: inherit; padding: 6px 14px; cursor: pointer; }
+      #log { height: 240px; overflow: auto; border: 1px solid var(--line); padding: 8px; font: 12px/1.4 ui-monospace, monospace; white-space: pre-wrap; margin: 0 0 16px; }
+      table { border-collapse: collapse; width: 100%; font-size: 13px; }
+      td, th { border-bottom: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; word-break: break-word; }
+      #json { width: 100%; height: 160px; margin-top: 12px; }
+    </style>
+  </head>
+  <body>
+    <h1>Gutter bench</h1>
+    <p>Dev only. Measures the built-in model, the meaning matcher and retrieval with synthetic chats. A full run takes
+      30 to 60 minutes; keep this tab in the foreground. Results are kept if you reload, so sections can run separately.</p>
+    <div class="bar">
+      <label><input type="checkbox" id="sA" checked /> A built-in model</label>
+      <label><input type="checkbox" id="sB" checked /> B meaning matcher</label>
+      <label><input type="checkbox" id="sC" checked /> C retrieval</label>
+      <label><input type="checkbox" id="sD" checked /> D end to end</label>
+      <label><input type="checkbox" id="sE" checked /> E multi-step reading</label>
+    </div>
+    <div class="bar">
+      <button id="start">Start</button>
+      <button id="copy">Copy JSON</button>
+      <button id="clear">Clear results</button>
+    </div>
+    <pre id="log"></pre>
+    <table>
+      <thead><tr><th>Part</th><th>Measurement</th><th>Median</th><th>Unit</th><th>Note</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <textarea id="json" hidden></textarea>
+    <script type="module" src="./src/bench/bench.ts"></script>
+  </body>
+</html>

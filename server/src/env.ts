@@ -25,8 +25,8 @@ export const env = {
   jwtSecret,
   keys,
   models,
-  /** Hosted side questions each signed-in user gets per day. */
-  dailyLimit: Number(process.env.FREE_DAILY_LIMIT ?? 25),
+  /** Smart (hosted) answers a free account gets, in total. Paid accounts are not limited. */
+  freeLimit: Number(process.env.FREE_SMART_ANSWERS ?? 3),
   /** If set, only this extension id may call the API from a browser. */
   extensionId: process.env.EXTENSION_ID ?? '',
   /** Required to PUT a new selector config. Unset = endpoint disabled. */

@@ -5,6 +5,7 @@
 import {
   DEFAULT_SELECTORS,
   isSelectorConfig,
+  type MessageRule,
   type SelectorConfig,
   type SiteConfig
 } from '../../shared/selectors';
@@ -37,10 +38,10 @@ function query(selector: string): Element[] {
   }
 }
 
-function findMessages(site: SiteConfig): Found[] {
+function findMessages(rules: MessageRule[]): Found[] {
   const seen = new Set<Element>();
   const found: Found[] = [];
-  for (const rule of site.messages) {
+  for (const rule of rules) {
     for (const el of query(rule.selector)) {
       if (seen.has(el)) continue;
       let role: Found['role'] = 'unknown';
@@ -70,8 +71,10 @@ function findMessages(site: SiteConfig): Found[] {
 }
 
 function readChat(site: SiteConfig): { found: Found[]; fallback: boolean } {
-  const found = findMessages(site);
+  const found = findMessages(site.messages);
   if (found.length) return { found, fallback: false };
+  const second = findMessages(site.fallback ?? []);
+  if (second.length) return { found: second, fallback: false };
   // Selectors found nothing (site changed?): fall back to the page's main text.
   const main = document.querySelector('main') ?? document.body;
   return { found: textOf(main) ? [{ el: main, role: 'unknown' }] : [], fallback: true };

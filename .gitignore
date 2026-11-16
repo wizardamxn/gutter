@@ -3,3 +3,5 @@ server/dist/
 .env
 extension/test/shot-*.png
 *.zip
+extension/test/live/
+release/

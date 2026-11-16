@@ -1,17 +1,9 @@
-import { timingSafeEqual } from 'node:crypto';
 import { Router } from 'express';
 import { DEFAULT_SELECTORS, isSelectorConfig, type SelectorConfig } from '../../shared/selectors';
-import { env } from './env';
+import { isAdmin } from './admin';
 import { SelectorDoc } from './models';
 
 export const configRouter = Router();
-
-function isAdmin(token: unknown): boolean {
-  if (!env.adminToken || typeof token !== 'string') return false;
-  const a = Buffer.from(token);
-  const b = Buffer.from(env.adminToken);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 // Public: the extension polls this to learn how to read each chat site.
 // Serves the newest config saved in MongoDB, or the built-in default.
