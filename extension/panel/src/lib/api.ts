@@ -5,6 +5,9 @@ import type { Auth } from './storage';
 
 declare const __API_URL__: string;
 export const API_URL = __API_URL__;
+declare const __UPGRADE_URL__: string;
+/** Where "Upgrade" sends people. Empty until paid plans open. */
+export const UPGRADE_URL = __UPGRADE_URL__;
 
 export class ApiError extends Error {
   status: number;

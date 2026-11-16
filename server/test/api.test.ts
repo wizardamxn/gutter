@@ -9,23 +9,27 @@ process.env.JWT_SECRET = 'test-secret-test-secret-test-secret-1234';
 process.env.OPENAI_API_KEY = 'sk-test';
 process.env.ANTHROPIC_API_KEY = '';
 process.env.GEMINI_API_KEY = '';
-process.env.FREE_DAILY_LIMIT = '2';
+process.env.FREE_SMART_ANSWERS = '3';
 process.env.ADMIN_TOKEN = 'admin-token';
 process.env.EXTENSION_ID = '';
 
 const realFetch = globalThis.fetch;
 let upstreamCalls = 0;
+let upstreamFails = false;
 globalThis.fetch = (async (input: any, init?: any) => {
   const url = typeof input === 'string' ? input : input.url;
   if (url.startsWith('https://api.openai.com/')) {
     upstreamCalls++;
     assert.equal(init.headers.authorization, 'Bearer sk-test');
+    if (upstreamFails) return new Response('{"error":{"message":"overloaded"}}', { status: 503 });
     const sse =
       'data: {"choices":[{"delta":{"content":"Hello "}}]}\n\n' +
       'data: {"choices":[{"delta":{"content":"from the gutter"}}]}\n\n' +
       'data: [DONE]\n\n';
     return new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } });
   }
+  // Never reach a real model provider from the tests.
+  if (/^https:\/\/(api\.anthropic\.com|generativelanguage\.googleapis\.com)\//.test(url)) throw new Error(`unexpected upstream call: ${url}`);
   return realFetch(input, init);
 }) as typeof fetch;
 
@@ -91,7 +95,7 @@ try {
     quote: 'the gutter',
     messages: [
       { role: 'user', content: 'What is a gutter?' },
-      { role: 'assistant', content: 'The margin.', via: 'OpenAI · Gutter' }
+      { role: 'assistant', content: 'The margin.', via: 'OpenAI · Gutter', label: 'mixed' }
     ],
     createdAt: 1000,
     updatedAt: 2000
@@ -104,7 +108,7 @@ try {
 
     const list = await call('GET', '/api/threads?convKey=' + encodeURIComponent('chatgpt:/c/abc'), undefined, auth());
     assert.equal(list.json.threads.length, 1);
-    assert.deepEqual(list.json.threads[0].messages[1], { role: 'assistant', content: 'The margin.', via: 'OpenAI · Gutter' });
+    assert.deepEqual(list.json.threads[0].messages[1], { role: 'assistant', content: 'The margin.', via: 'OpenAI · Gutter', label: 'mixed' });
 
     // An older copy does not overwrite a newer one.
     const stale = await call('PUT', '/api/threads/thread-0001', { ...thread, title: 'old', updatedAt: 1500 }, auth());
@@ -126,11 +130,12 @@ try {
     assert.equal((await call('PUT', '/api/threads/thread-0002', { ...thread, messages: 'nope' }, auth())).status, 400);
   });
 
-  await test('hosted AI: providers, streaming, daily limit', async () => {
+  await test('smart answers: providers, streaming, free limit, paid plan', async () => {
     const info = await call('GET', '/api/ai/providers', undefined, auth());
     assert.deepEqual(info.json.providers, ['openai']);
-    assert.equal(info.json.dailyLimit, 2);
-    assert.equal(info.json.usedToday, 0);
+    assert.equal(info.json.plan, 'free');
+    assert.equal(info.json.freeLimit, 3);
+    assert.equal(info.json.used, 0);
 
     const body = { provider: 'openai', system: 'sys', messages: [{ role: 'user', content: 'hi' }] };
     const r1 = await call('POST', '/api/ai/chat', body, auth());
@@ -144,23 +149,106 @@ try {
     assert.equal((await call('POST', '/api/ai/chat', { ...body, provider: 'anthropic' }, auth())).status, 400);
 
     assert.equal((await call('POST', '/api/ai/chat', body, auth())).status, 200);
-    const r3 = await call('POST', '/api/ai/chat', body, auth());
-    assert.equal(r3.status, 429);
-    assert.equal(upstreamCalls, 2);
-    assert.equal((await call('GET', '/api/ai/providers', undefined, auth())).json.usedToday, 2);
+    assert.equal((await call('POST', '/api/ai/chat', body, auth())).status, 200);
+    const r4 = await call('POST', '/api/ai/chat', body, auth());
+    assert.equal(r4.status, 402);
+    assert.equal(r4.json.code, 'upgrade');
+    assert.equal(upstreamCalls, 3);
+    assert.equal((await call('GET', '/api/ai/providers', undefined, auth())).json.used, 3);
+
+    // Marking the account paid (by hand, with the admin token) lifts the limit.
+    const admin = { 'x-admin-token': 'admin-token' };
+    assert.equal((await call('PUT', '/api/admin/plan', { email: 'a@example.com', plan: 'paid' }, { 'x-admin-token': 'wrong' })).status, 404);
+    assert.equal((await call('PUT', '/api/admin/plan', { email: 'nobody@example.com', plan: 'paid' }, admin)).status, 404);
+    assert.equal((await call('PUT', '/api/admin/plan', { email: 'a@example.com', plan: 'paid' }, admin)).json.plan, 'paid');
+    assert.equal((await call('POST', '/api/ai/chat', body, auth())).status, 200);
+    assert.equal((await call('GET', '/api/ai/providers', undefined, auth())).json.plan, 'paid');
+  });
+
+  const signup = async (email: string) => {
+    const t = (await call('POST', '/api/auth/signup', { email, password: 'hunter22!' })).json.token;
+    return { authorization: `Bearer ${t}` };
+  };
+  const chatBody = { provider: 'openai', system: 'sys', messages: [{ role: 'user', content: 'hi' }] };
+
+  await test('10 parallel smart answers from one free account: exactly 3 get through', async () => {
+    const h = await signup('parallel@example.com');
+    const before = upstreamCalls;
+    const all = await Promise.all(Array.from({ length: 10 }, () => call('POST', '/api/ai/chat', chatBody, h)));
+    const statuses = all.map((r) => r.status);
+    assert.equal(statuses.filter((s) => s === 200).length, 3, `statuses: ${statuses}`);
+    assert.equal(statuses.filter((s) => s === 402).length, 7, `statuses: ${statuses}`);
+    assert.equal(upstreamCalls - before, 3);
+    assert.equal((await call('GET', '/api/ai/providers', undefined, h)).json.used, 3);
+
+    // Marking the account paid lifts the limit.
+    const admin = { 'x-admin-token': 'admin-token' };
+    assert.equal((await call('PUT', '/api/admin/plan', { email: 'parallel@example.com', plan: 'paid' }, admin)).status, 200);
+    assert.equal((await call('POST', '/api/ai/chat', chatBody, h)).status, 200);
+  });
+
+  await test('a failed upstream answer does not use up a free answer', async () => {
+    const h = await signup('flaky@example.com');
+    upstreamFails = true;
+    try {
+      const r = await call('POST', '/api/ai/chat', chatBody, h);
+      assert.equal(r.status, 200); // headers were already streaming; the error arrives as an event
+      assert.ok(r.text.includes('"error"'), r.text);
+      assert.ok(!r.text.includes('[DONE]'));
+    } finally {
+      upstreamFails = false;
+    }
+    assert.equal((await call('GET', '/api/ai/providers', undefined, h)).json.used, 0);
+    for (let i = 0; i < 3; i++) assert.equal((await call('POST', '/api/ai/chat', chatBody, h)).status, 200);
+    assert.equal((await call('POST', '/api/ai/chat', chatBody, h)).status, 402);
+  });
+
+  await test('admin endpoint: wrong or missing token gets 404, bad body 400', async () => {
+    const body = { email: 'flaky@example.com', plan: 'paid' };
+    assert.equal((await call('PUT', '/api/admin/plan', body, { 'x-admin-token': 'admin-tokeN' })).status, 404);
+    assert.equal((await call('PUT', '/api/admin/plan', body, { 'x-admin-token': 'admin-token-and-more' })).status, 404);
+    assert.equal((await call('PUT', '/api/admin/plan', body)).status, 404);
+    assert.equal((await call('PUT', '/api/admin/plan', { email: 'flaky@example.com', plan: 'gold' }, { 'x-admin-token': 'admin-token' })).status, 400);
+    // The wrong-token attempts changed nothing.
+    const h = { authorization: `Bearer ${(await call('POST', '/api/auth/login', { email: 'flaky@example.com', password: 'hunter22!' })).json.token}` };
+    assert.equal((await call('GET', '/api/ai/providers', undefined, h)).json.plan, 'free');
+  });
+
+  await test("one user can't read or overwrite another's side notes", async () => {
+    const alice = await signup('alice@example.com');
+    const mallory = await signup('mallory@example.com');
+    const key = encodeURIComponent('claude:/chat/shared');
+    const note = { ...thread, convKey: 'claude:/chat/shared', site: 'claude', title: 'alice secret', updatedAt: 5000 };
+    assert.equal((await call('PUT', '/api/threads/alice-note-01', note, alice)).status, 200);
+
+    // Same conversation key and the same thread id, newer timestamp, even a delete marker.
+    assert.equal((await call('GET', `/api/threads?convKey=${key}`, undefined, mallory)).json.threads.length, 0);
+    const hijack = await call('PUT', '/api/threads/alice-note-01', { ...note, title: 'pwned', updatedAt: 9_999_999 }, mallory);
+    assert.equal(hijack.status, 200);
+    assert.equal(hijack.json.thread.title, 'pwned'); // mallory's own copy
+    await call('PUT', '/api/threads/alice-note-01', { ...note, updatedAt: 10_000_000, deleted: true }, mallory);
+
+    const mine = (await call('GET', `/api/threads?convKey=${key}`, undefined, alice)).json.threads;
+    assert.equal(mine.length, 1);
+    assert.equal(mine[0].title, 'alice secret');
+    assert.equal(mine[0].deleted, undefined);
+    assert.equal(mine[0].messages.length, 2);
+    const theirs = (await call('GET', `/api/threads?convKey=${key}`, undefined, mallory)).json.threads;
+    assert.equal(theirs.length, 1);
+    assert.equal(theirs[0].deleted, true);
   });
 
   await test('selector config: default, admin publish, bad token', async () => {
     const d = await call('GET', '/api/config/selectors');
-    assert.equal(d.json.version, 1);
+    assert.equal(d.json.version, 2); // shared/selectors.ts (2: ChatGPT second-chance selectors)
     assert.equal(d.json.sites.length, 4);
 
-    const next = { version: 2, sites: [{ ...d.json.sites[0], composer: ['#new-box'] }] };
+    const next = { version: 3, sites: [{ ...d.json.sites[0], composer: ['#new-box'] }] };
     assert.equal((await call('PUT', '/api/config/selectors', next, { 'x-admin-token': 'wrong' })).status, 404);
-    assert.equal((await call('PUT', '/api/config/selectors', { version: 2, sites: 'x' }, { 'x-admin-token': 'admin-token' })).status, 400);
+    assert.equal((await call('PUT', '/api/config/selectors', { version: 3, sites: 'x' }, { 'x-admin-token': 'admin-token' })).status, 400);
     assert.equal((await call('PUT', '/api/config/selectors', next, { 'x-admin-token': 'admin-token' })).status, 200);
     const u = await call('GET', '/api/config/selectors');
-    assert.equal(u.json.version, 2);
+    assert.equal(u.json.version, 3);
     assert.deepEqual(u.json.sites[0].composer, ['#new-box']);
   });
 

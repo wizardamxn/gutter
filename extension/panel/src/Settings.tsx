@@ -2,24 +2,29 @@ import { useState } from 'react';
 import { PROVIDER_LABEL } from '../../../shared/providers';
 import { PROVIDERS, type HostedInfo } from '../../../shared/types';
 import { api } from './lib/api';
+import type { NanoStatus } from './lib/nano';
 import type { Auth, Settings as SettingsData } from './lib/storage';
 
 interface Props {
   settings: SettingsData;
   auth: Auth | null;
   hosted: HostedInfo | null;
+  nano: NanoStatus | 'checking';
   onSettings: (next: SettingsData) => void;
   onAuth: (auth: Auth | null) => void;
-  onBack: () => void;
 }
 
-const KEY_HINT = {
-  openai: 'sk-…',
-  anthropic: 'sk-ant-…',
-  gemini: 'AIza…'
-} as const;
+const KEY_HINT = { openai: 'sk-…', anthropic: 'sk-ant-…', gemini: 'AIza…' } as const;
 
-export function Settings({ settings, auth, hosted, onSettings, onAuth, onBack }: Props) {
+const NANO_TEXT: Record<NanoStatus | 'checking', string> = {
+  checking: 'Checking…',
+  available: 'Ready. Free and unlimited. It runs on this computer, so your chat never leaves it.',
+  downloadable: 'Chrome downloads it the first time you ask (about 4 GB, one time). Free and unlimited after that.',
+  downloading: 'Chrome is downloading it now. You can ask as soon as it finishes.',
+  unavailable: "This computer or browser can't run it. Use a smart model instead."
+};
+
+export function Settings({ settings, auth, hosted, nano, onSettings, onAuth }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -32,7 +37,7 @@ export function Settings({ settings, auth, hosted, onSettings, onAuth, onBack }:
       onAuth(await api[mode](email.trim(), password));
       setPassword('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.');
+      setError(err instanceof Error ? err.message : 'Something went wrong. Try again.');
     } finally {
       setWorking(false);
     }
@@ -40,25 +45,30 @@ export function Settings({ settings, auth, hosted, onSettings, onAuth, onBack }:
 
   return (
     <div className="settings">
-      <button className="link back" onClick={onBack}>
-        ← Back
-      </button>
+      <section>
+        <h2>Built-in model</h2>
+        <p className="muted nano-status" data-status={nano}>
+          {NANO_TEXT[nano]}
+        </p>
+        <p className="muted">It is a small model: good for explaining and summarizing, less reliable for checking facts, and it only sees the recent part of a long chat.</p>
+      </section>
 
-      <section className="card">
-        <h2>Account</h2>
+      <section>
+        <h2>Smart models</h2>
         {auth ? (
           <>
             <p>
-              Signed in as <b>{auth.email}</b>
+              Signed in as <b>{auth.email}</b>. Your side notes sync to this account.
             </p>
             {hosted && (
-              <p className="muted">
-                {hosted.providers.length
-                  ? `Gutter-hosted answers: ${hosted.usedToday} of ${hosted.dailyLimit} used today.`
-                  : 'No Gutter-hosted models are switched on right now. Use your own key below.'}
+              <p className="muted smart-usage">
+                {!hosted.providers.length
+                  ? 'Smart models are not available right now.'
+                  : hosted.plan === 'paid'
+                    ? 'Paid plan: unlimited smart answers.'
+                    : `${Math.min(hosted.used, hosted.freeLimit)} of ${hosted.freeLimit} free smart answers used.`}
               </p>
             )}
-            <p className="muted">Your side notes sync to your account.</p>
             <button className="btn" onClick={() => onAuth(null)}>
               Sign out
             </button>
@@ -70,9 +80,7 @@ export function Settings({ settings, auth, hosted, onSettings, onAuth, onBack }:
               void submit('login');
             }}
           >
-            <p className="muted">
-              Sign in for free daily answers without an API key, and to sync your side notes across devices.
-            </p>
+            <p className="muted">Larger cloud models that read the whole chat and can give a second opinion. Sign in to try 3 answers free.</p>
             <label>
               Email
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
@@ -88,7 +96,7 @@ export function Settings({ settings, auth, hosted, onSettings, onAuth, onBack }:
                 required
               />
             </label>
-            {error && <p className="error">{error}</p>}
+            {error && <p className="form-error">{error}</p>}
             <div className="row">
               <button className="btn primary" type="submit" disabled={working}>
                 Sign in
@@ -101,12 +109,9 @@ export function Settings({ settings, auth, hosted, onSettings, onAuth, onBack }:
         )}
       </section>
 
-      <section className="card">
-        <h2>Your own keys</h2>
-        <p className="muted">
-          Optional. Add a key to ask that model directly, with no daily limit. Keys stay on this device and go only to
-          that provider.
-        </p>
+      <details>
+        <summary>Advanced: use your own API keys</summary>
+        <p className="muted">With a key, Gutter asks that model directly and you pay the provider. Keys stay on this device.</p>
         {PROVIDERS.map((p) => (
           <div className="key-row" key={p}>
             <label>
@@ -131,14 +136,13 @@ export function Settings({ settings, auth, hosted, onSettings, onAuth, onBack }:
             </label>
           </div>
         ))}
-      </section>
+      </details>
 
-      <section className="card">
-        <h2>What Gutter sees</h2>
+      <section>
+        <h2>What Gutter reads</h2>
         <p className="muted">
-          Gutter reads the chat in the open tab only when you ask a side question, and sends it to the model you picked
-          (through the Gutter server for hosted models, straight to the provider for your own keys). It never posts in
-          your main chat by itself.
+          Gutter reads the chat in the open tab only when you ask a question. With the built-in model it stays on this
+          computer; with a smart model it is sent to that model. Gutter never sends anything in your main chat.
         </p>
       </section>
     </div>

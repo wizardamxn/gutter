@@ -21,6 +21,8 @@ export interface SiteConfig {
   name: string;
   hosts: string[];
   messages: MessageRule[];
+  /** Tried only when `messages` finds nothing (the site changed its markup). */
+  fallback?: MessageRule[];
   /** Chat input box candidates, tried in order. */
   composer: string[];
   /** Regex sources (case-insensitive) removed from document.title. */
@@ -33,13 +35,18 @@ export interface SelectorConfig {
 }
 
 export const DEFAULT_SELECTORS: SelectorConfig = {
-  version: 1,
+  version: 2,
   sites: [
     {
       id: 'chatgpt',
       name: 'ChatGPT',
       hosts: ['chatgpt.com', 'chat.openai.com'],
       messages: [{ selector: '[data-message-author-role]', roleAttr: 'data-message-author-role' }],
+      // Unverified guesses at the turn wrappers, for when the attribute above is gone.
+      fallback: [
+        { selector: '[data-turn]', roleAttr: 'data-turn' },
+        { selector: 'article[data-testid^="conversation-turn"]' }
+      ],
       composer: ['#prompt-textarea', 'form [contenteditable="true"]', 'form textarea'],
       titleStrip: ['\\s*[-|]\\s*ChatGPT$', '^ChatGPT$']
     },
@@ -95,7 +102,8 @@ export function isSelectorConfig(x: unknown): x is SelectorConfig {
       isStrArr(site.composer) &&
       isStrArr(site.titleStrip) &&
       Array.isArray(site.messages) &&
-      site.messages.every((m: unknown) => {
+      (site.fallback === undefined || Array.isArray(site.fallback)) &&
+      [...site.messages, ...((site.fallback as unknown[] | undefined) ?? [])].every((m: unknown) => {
         if (!m || typeof m !== 'object') return false;
         const r = m as Record<string, unknown>;
         return (

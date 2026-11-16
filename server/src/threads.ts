@@ -17,7 +17,11 @@ const threadBody = z.object({
         role: z.enum(['user', 'assistant']),
         content: z.string().max(100_000),
         via: z.string().max(80).optional(),
-        error: z.boolean().optional()
+        error: z.boolean().optional(),
+        unverified: z.boolean().optional(),
+        general: z.boolean().optional(),
+        label: z.enum(['chat', 'mixed', 'general']).optional(),
+        sources: z.array(z.object({ label: z.string().max(80), snippet: z.string().max(200) })).max(8).optional()
       })
     )
     .max(200),
@@ -37,7 +41,11 @@ function toClient(doc: any): Thread {
       role: m.role,
       content: m.content,
       ...(m.via ? { via: m.via } : {}),
-      ...(m.error ? { error: true } : {})
+      ...(m.error ? { error: true } : {}),
+      ...(m.unverified ? { unverified: true } : {}),
+      ...(m.general ? { general: true } : {}),
+      ...(m.label ? { label: m.label } : {}),
+      ...(m.sources?.length ? { sources: m.sources.map((s: any) => ({ label: s.label, snippet: s.snippet })) } : {})
     })),
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,

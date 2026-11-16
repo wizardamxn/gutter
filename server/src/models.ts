@@ -3,7 +3,10 @@ import mongoose, { Schema } from 'mongoose';
 const userSchema = new Schema(
   {
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-    passwordHash: { type: String, required: true }
+    passwordHash: { type: String, required: true },
+    plan: { type: String, enum: ['free', 'paid'], default: 'free' },
+    /** Smart (hosted) answers used so far. Free accounts stop at env.freeLimit. */
+    smartUsed: { type: Number, default: 0 }
   },
   { timestamps: true }
 );
@@ -22,7 +25,11 @@ const threadSchema = new Schema({
       role: { type: String, enum: ['user', 'assistant'], required: true },
       content: { type: String, default: '' },
       via: String,
-      error: Boolean
+      error: Boolean,
+      unverified: Boolean,
+      general: Boolean,
+      label: { type: String, enum: ['chat', 'mixed', 'general'] },
+      sources: { type: [{ _id: false, label: String, snippet: String }], default: undefined }
     }
   ],
   createdAt: { type: Number, required: true },
@@ -31,13 +38,6 @@ const threadSchema = new Schema({
 });
 threadSchema.index({ userId: 1, clientId: 1 }, { unique: true });
 threadSchema.index({ userId: 1, convKey: 1 });
-
-const usageSchema = new Schema({
-  userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-  day: { type: String, required: true }, // YYYY-MM-DD (UTC)
-  count: { type: Number, default: 0 }
-});
-usageSchema.index({ userId: 1, day: 1 }, { unique: true });
 
 const selectorSchema = new Schema(
   {
@@ -49,5 +49,4 @@ const selectorSchema = new Schema(
 
 export const User = mongoose.model('User', userSchema);
 export const ThreadModel = mongoose.model('Thread', threadSchema);
-export const Usage = mongoose.model('Usage', usageSchema);
 export const SelectorDoc = mongoose.model('SelectorConfig', selectorSchema);

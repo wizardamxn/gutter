@@ -1,6 +1,7 @@
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import helmet from 'helmet';
+import { adminRouter } from './admin';
 import { aiRouter } from './ai';
 import { authRouter } from './auth';
 import { configRouter } from './config';
@@ -36,6 +37,7 @@ export function createApp() {
   app.use('/api/threads', threadsRouter);
   app.use('/api/ai', aiRouter);
   app.use('/api/config', configRouter);
+  app.use('/api/admin', adminRouter);
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'Not found.' });
